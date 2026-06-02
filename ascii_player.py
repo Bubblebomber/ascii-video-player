@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-ASCII Video Player — CLI-утилита для воспроизведения видео в терминале
-в виде цветного ASCII/ANSI-арта.
+ASCII Video Player — CLI utility for playing videos in the terminal
+as colorful ASCII/ANSI art.
 
-Поддерживает локальные файлы и YouTube-ссылки (через yt-dlp).
+Supports local files and YouTube links (via yt-dlp).
 """
 
 import argparse
@@ -18,21 +18,21 @@ import io
 import cv2
 import numpy as np
 
-# Принудительно UTF-8 для stdout/stderr на Windows
+# Force UTF-8 for stdout/stderr on Windows
 if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-# ─── Константы ────────────────────────────────────────────────────────────────
+# ─── Constants ────────────────────────────────────────────────────────────────
 
-# Градиент символов от тёмного к светлому (10 уровней)
+# Character gradient from dark to bright (10 levels)
 ASCII_CHARS = " .:-=+*#%@"
 
-# Коэффициент коррекции пропорций символа в терминале
-# (высота символа ~ в 2 раза больше ширины, корректируем)
+# Aspect ratio correction for terminal characters
+# (character height is ~2x its width, we compensate)
 CHAR_ASPECT_RATIO = 0.55
 
-# ANSI-коды управления терминалом
+# ANSI terminal control codes
 HIDE_CURSOR = "\033[?25l"
 SHOW_CURSOR = "\033[?25h"
 MOVE_HOME = "\033[H"
@@ -40,15 +40,15 @@ RESET_COLOR = "\033[0m"
 CLEAR_SCREEN = "\033[2J"
 
 
-# ─── Утилиты ─────────────────────────────────────────────────────────────────
+# ─── Utilities ────────────────────────────────────────────────────────────────
 
 def is_url(path: str) -> bool:
-    """Проверяет, является ли строка URL-адресом."""
+    """Check if the string is a URL."""
     return bool(re.match(r"https?://", path, re.IGNORECASE))
 
 
 def is_youtube_url(url: str) -> bool:
-    """Проверяет, является ли URL ссылкой на YouTube."""
+    """Check if the URL is a YouTube link."""
     youtube_patterns = [
         r"(https?://)?(www\.)?youtube\.com/watch",
         r"(https?://)?(www\.)?youtube\.com/shorts",
@@ -60,10 +60,10 @@ def is_youtube_url(url: str) -> bool:
 
 def get_stream_url(youtube_url: str) -> str:
     """
-    Использует yt-dlp для получения прямой ссылки на видеопоток.
-    Выбирает лучшее качество с разрешением ≤ 720p для производительности.
+    Use yt-dlp to get the direct video stream URL.
+    Selects best quality at ≤720p for performance.
     """
-    print(f"\033[33m⏳ Получаю поток из YouTube: {youtube_url}\033[0m")
+    print(f"\033[33m⏳ Fetching stream from YouTube: {youtube_url}\033[0m")
     try:
         result = subprocess.run(
             [
@@ -79,57 +79,57 @@ def get_stream_url(youtube_url: str) -> str:
         )
         stream_url = result.stdout.strip()
         if not stream_url:
-            raise RuntimeError("yt-dlp вернул пустой URL.")
-        print(f"\033[32m✅ Поток получен.\033[0m")
+            raise RuntimeError("yt-dlp returned an empty URL.")
+        print(f"\033[32m✅ Stream URL obtained.\033[0m")
         return stream_url
     except FileNotFoundError:
         print(
-            "\033[31m❌ yt-dlp не найден. Установите его: pip install yt-dlp\033[0m",
+            "\033[31m❌ yt-dlp not found. Install it: pip install yt-dlp\033[0m",
             file=sys.stderr,
         )
         sys.exit(1)
     except subprocess.CalledProcessError as e:
         print(
-            f"\033[31m❌ yt-dlp ошибка:\n{e.stderr}\033[0m",
+            f"\033[31m❌ yt-dlp error:\n{e.stderr}\033[0m",
             file=sys.stderr,
         )
         sys.exit(1)
     except subprocess.TimeoutExpired:
         print(
-            "\033[31m❌ yt-dlp: превышено время ожидания (30 с).\033[0m",
+            "\033[31m❌ yt-dlp: timeout exceeded (30s).\033[0m",
             file=sys.stderr,
         )
         sys.exit(1)
 
 
-# ─── Конвертация кадра в цветной ASCII ──────────────────────────────────────
+# ─── Frame to colored ASCII conversion ──────────────────────────────────────
 
 def frame_to_ansi(frame: np.ndarray, width: int) -> str:
     """
-    Конвертирует BGR-кадр OpenCV в строку цветного ASCII-арта
-    с использованием True Color ANSI-кодов (\033[38;2;R;G;Bm).
+    Convert a BGR OpenCV frame to a colored ASCII art string
+    using True Color ANSI codes (\033[38;2;R;G;Bm).
     """
     h, w = frame.shape[:2]
     aspect = h / w
-    # Вычисляем высоту с учётом пропорций символов
+    # Calculate height accounting for character aspect ratio
     new_height = int(width * aspect * CHAR_ASPECT_RATIO)
     new_width = width
 
-    # Уменьшаем кадр до целевого размера
+    # Resize frame to target dimensions
     resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
 
-    # Конвертируем BGR → RGB
+    # Convert BGR → RGB
     rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
 
-    # Предвычисляем яркость для выбора символов
-    # Яркость (perceived luminance) по формуле BT.601
+    # Compute brightness for character selection
+    # Perceived luminance using BT.601 formula
     gray = np.dot(rgb[..., :3].astype(np.float32), [0.299, 0.587, 0.114])
 
-    # Индексы символов (0..len-1)
+    # Character indices (0..len-1)
     num_chars = len(ASCII_CHARS)
     indices = np.clip((gray / 255.0 * (num_chars - 1)).astype(int), 0, num_chars - 1)
 
-    # Собираем строку посимвольно с ANSI True Color
+    # Build string character by character with ANSI True Color
     lines = []
     for y in range(new_height):
         row_parts = []
@@ -138,7 +138,7 @@ def frame_to_ansi(frame: np.ndarray, width: int) -> str:
             r, g, b = int(rgb[y, x, 0]), int(rgb[y, x, 1]), int(rgb[y, x, 2])
             char = ASCII_CHARS[indices[y, x]]
 
-            # Оптимизация: не повторяем escape-код, если цвет не изменился
+            # Optimization: skip escape code if color hasn't changed
             if r != prev_r or g != prev_g or b != prev_b:
                 row_parts.append(f"\033[38;2;{r};{g};{b}m{char}")
                 prev_r, prev_g, prev_b = r, g, b
@@ -151,8 +151,8 @@ def frame_to_ansi(frame: np.ndarray, width: int) -> str:
 
 def frame_to_ansi_fast(frame: np.ndarray, width: int) -> str:
     """
-    Оптимизированная версия конвертации — использует векторизацию NumPy
-    и строковые буферы для максимальной скорости рендеринга.
+    Optimized conversion — uses NumPy vectorization
+    and string buffers for maximum rendering speed.
     """
     h, w = frame.shape[:2]
     aspect = h / w
@@ -162,16 +162,16 @@ def frame_to_ansi_fast(frame: np.ndarray, width: int) -> str:
     resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
     rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
 
-    # Яркость
+    # Brightness
     gray = np.dot(rgb[..., :3].astype(np.float32), [0.299, 0.587, 0.114])
     num_chars = len(ASCII_CHARS)
     indices = np.clip((gray / 255.0 * (num_chars - 1)).astype(int), 0, num_chars - 1)
 
-    # Предварительно создаём массив символов
+    # Pre-build character array
     char_array = np.array(list(ASCII_CHARS))
-    ascii_matrix = char_array[indices]  # (H, W) массив символов
+    ascii_matrix = char_array[indices]  # (H, W) character array
 
-    # Собираем вывод через массивы строк
+    # Build output via string arrays
     buf = [MOVE_HOME]
     for y in range(new_height):
         row_rgb = rgb[y]        # (W, 3)
@@ -192,16 +192,16 @@ def frame_to_ansi_fast(frame: np.ndarray, width: int) -> str:
     return RESET_COLOR + "\n".join(buf) + RESET_COLOR
 
 
-# ─── Основной цикл воспроизведения ──────────────────────────────────────────
+# ─── Main playback loop ─────────────────────────────────────────────────────
 
 def play_video(source: str, width: int) -> None:
     """
-    Главный цикл воспроизведения: захватывает кадры из source
-    и рендерит их в терминал как цветной ASCII-арт.
+    Main playback loop: captures frames from source
+    and renders them as colored ASCII art in the terminal.
     """
     cap = cv2.VideoCapture(source)
     if not cap.isOpened():
-        print(f"\033[31m❌ Не удалось открыть видео: {source}\033[0m", file=sys.stderr)
+        print(f"\033[31m❌ Failed to open video: {source}\033[0m", file=sys.stderr)
         sys.exit(1)
 
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -212,7 +212,7 @@ def play_video(source: str, width: int) -> None:
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     total_str = str(total_frames) if total_frames > 0 else "?"
 
-    # Прячем курсор и очищаем экран один раз
+    # Hide cursor and clear screen once
     sys.stdout.write(HIDE_CURSOR + CLEAR_SCREEN)
     sys.stdout.flush()
 
@@ -224,56 +224,56 @@ def play_video(source: str, width: int) -> None:
 
             ret, frame = cap.read()
             if not ret:
-                break  # конец видео
+                break  # end of video
 
             frame_count += 1
 
-            # Конвертируем и выводим кадр
+            # Convert and render frame
             ansi_frame = frame_to_ansi_fast(frame, width)
             sys.stdout.write(ansi_frame)
 
-            # Строка статуса
+            # Status bar
             elapsed = frame_count / fps
             mins, secs = divmod(int(elapsed), 60)
             status = (
-                f"\n\033[36m▶ Кадр {frame_count}/{total_str} "
+                f"\n\033[36m▶ Frame {frame_count}/{total_str} "
                 f"| {mins:02d}:{secs:02d} "
                 f"| FPS: {fps:.1f} "
-                f"| Ширина: {width}\033[0m"
+                f"| Width: {width}\033[0m"
             )
             sys.stdout.write(status)
             sys.stdout.flush()
 
-            # Синхронизация по FPS
+            # FPS synchronization
             t_elapsed = time.perf_counter() - t_start
             sleep_time = frame_time - t_elapsed
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
     except KeyboardInterrupt:
-        pass  # обработка Ctrl+C — выходим чисто
+        pass  # handle Ctrl+C — exit cleanly
     finally:
         cap.release()
-        # Восстанавливаем терминал
+        # Restore terminal state
         sys.stdout.write(SHOW_CURSOR + RESET_COLOR + "\n")
         sys.stdout.flush()
-        print("\n\033[33m👋 Воспроизведение завершено.\033[0m")
+        print("\n\033[33m👋 Playback finished.\033[0m")
 
 
-# ─── Точка входа ─────────────────────────────────────────────────────────────
+# ─── Entry point ─────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
-    """Парсит аргументы командной строки."""
-    # Автоматическое определение ширины терминала
+    """Parse command-line arguments."""
+    # Auto-detect terminal width
     term_width = shutil.get_terminal_size((120, 40)).columns
 
     parser = argparse.ArgumentParser(
         prog="ascii_player",
         description=(
-            "🎬 ASCII Video Player — воспроизведение видео в терминале "
-            "в виде цветного ASCII/ANSI-арта."
+            "🎬 ASCII Video Player — play videos in the terminal "
+            "as colorful ASCII/ANSI art."
         ),
-        epilog="Примеры:\n"
+        epilog="Examples:\n"
                "  python ascii_player.py video.mp4\n"
                "  python ascii_player.py video.mp4 --width 80\n"
                '  python ascii_player.py "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\n',
@@ -281,13 +281,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "source",
-        help="Путь к видеофайлу или YouTube-ссылка.",
+        help="Path to a video file or a YouTube URL.",
     )
     parser.add_argument(
         "--width", "-w",
         type=int,
         default=min(term_width, 120),
-        help=f"Ширина ASCII-кадра в символах (по умолчанию: {min(term_width, 120)}).",
+        help=f"ASCII frame width in characters (default: {min(term_width, 120)}).",
     )
     return parser.parse_args()
 
@@ -298,23 +298,23 @@ def main() -> None:
     width = args.width
 
     if width < 20:
-        print("\033[31m❌ Ширина должна быть не менее 20 символов.\033[0m", file=sys.stderr)
+        print("\033[31m❌ Width must be at least 20 characters.\033[0m", file=sys.stderr)
         sys.exit(1)
 
-    # Определяем источник
+    # Determine source
     if is_url(source):
         if is_youtube_url(source):
             source = get_stream_url(source)
-        # Иначе — пробуем открыть как прямую ссылку на видео
+        # Otherwise — try opening as a direct video URL
     else:
         if not os.path.isfile(source):
-            print(f"\033[31m❌ Файл не найден: {source}\033[0m", file=sys.stderr)
+            print(f"\033[31m❌ File not found: {source}\033[0m", file=sys.stderr)
             sys.exit(1)
 
     print(f"\033[35m🎬 ASCII Video Player\033[0m")
-    print(f"\033[90m   Источник: {args.source}\033[0m")
-    print(f"\033[90m   Ширина:   {width} символов\033[0m")
-    print(f"\033[90m   Для выхода нажмите Ctrl+C\033[0m\n")
+    print(f"\033[90m   Source: {args.source}\033[0m")
+    print(f"\033[90m   Width:  {width} chars\033[0m")
+    print(f"\033[90m   Press Ctrl+C to exit\033[0m\n")
     time.sleep(1)
 
     play_video(source, width)

@@ -1,6 +1,6 @@
 # 🎬 ASCII Video Player
 
-> Воспроизводите видео прямо в терминале — в виде **цветного ASCII/ANSI-арта** с поддержкой True Color.
+> Play videos right in your terminal — as **colorful ASCII/ANSI art** with True Color support.
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.8+"/>
@@ -10,62 +10,62 @@
 
 ---
 
-## ✨ Возможности
+## ✨ Features
 
-- 🎥 **Локальные файлы** — MP4, AVI, MKV, MOV и любые форматы, поддерживаемые OpenCV/FFmpeg
-- 🌐 **YouTube** — вставьте ссылку, `yt-dlp` извлечёт поток автоматически
-- 🎨 **True Color** — полноцветный вывод через ANSI escape-коды (`\033[38;2;R;G;Bm`)
-- ⚡ **Без мерцания** — рендеринг перемещением каретки, а не очисткой экрана
-- 🔄 **FPS-синхронизация** — воспроизведение с оригинальной скоростью видео
-- 📐 **Авто-пропорции** — корректное соотношение сторон с учётом формы символов терминала
-- 🛡️ **Чистый выход** — `Ctrl+C` корректно восстанавливает курсор и состояние терминала
+- 🎥 **Local files** — MP4, AVI, MKV, MOV, and any format supported by OpenCV/FFmpeg
+- 🌐 **YouTube** — paste a link, `yt-dlp` extracts the stream automatically
+- 🎨 **True Color** — full-color output via ANSI escape codes (`\033[38;2;R;G;Bm`)
+- ⚡ **Flicker-free** — rendering by cursor repositioning, not screen clearing
+- 🔄 **FPS sync** — playback at the original video framerate
+- 📐 **Auto aspect ratio** — correct proportions accounting for terminal character shape
+- 🛡️ **Clean exit** — `Ctrl+C` gracefully restores cursor and terminal state
 
 ---
 
-## 📦 Установка
+## 📦 Installation
 
 ```bash
-# Клонируйте репозиторий
+# Clone the repository
 git clone https://github.com/Bubblebomber/ascii-video-player.git
 cd ascii-video-player
 
-# Установите зависимости
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### Зависимости
+### Dependencies
 
-| Пакет | Назначение |
-|-------|-----------|
-| `opencv-python` | Захват и декодирование видеокадров |
-| `numpy` | Быстрые операции над массивами пикселей |
-| `yt-dlp` | Извлечение потоков из YouTube |
+| Package | Purpose |
+|---------|---------|
+| `opencv-python` | Video frame capture and decoding |
+| `numpy` | Fast pixel array operations |
+| `yt-dlp` | YouTube stream extraction |
 
-> **Рекомендуется:** установите [FFmpeg](https://ffmpeg.org/) для максимальной совместимости с видеоформатами.
+> **Recommended:** install [FFmpeg](https://ffmpeg.org/) for maximum video format compatibility.
 
 ---
 
-## 🚀 Использование
+## 🚀 Usage
 
-### Локальный видеофайл
+### Local video file
 
 ```bash
 python ascii_player.py video.mp4
 ```
 
-### YouTube-видео
+### YouTube video
 
 ```bash
 python ascii_player.py "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 ```
 
-### С указанием ширины
+### Custom width
 
 ```bash
 python ascii_player.py video.mp4 --width 80
 ```
 
-### Справка
+### Help
 
 ```bash
 python ascii_player.py --help
@@ -73,58 +73,58 @@ python ascii_player.py --help
 
 ---
 
-## ⚙️ Параметры CLI
+## ⚙️ CLI Options
 
-| Параметр | Сокращение | Описание | По умолчанию |
-|----------|------------|----------|--------------|
-| `source` | — | Путь к видеофайлу или YouTube-ссылка | *(обязательный)* |
-| `--width` | `-w` | Ширина ASCII-кадра в символах | `120` (или ширина терминала) |
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `source` | — | Path to video file or YouTube URL | *(required)* |
+| `--width` | `-w` | ASCII frame width in characters | `120` (or terminal width) |
 
 ---
 
-## 🧠 Как это работает
+## 🧠 How It Works
 
 ```
 ┌──────────────┐     ┌──────────┐     ┌──────────────┐     ┌──────────────┐
-│  Источник    │────▸│  OpenCV   │────▸│  Конвертация  │────▸│  Терминал    │
-│  (файл/URL)  │     │  Декодер  │     │  ASCII+ANSI  │     │  Рендеринг   │
+│   Source     │────▸│  OpenCV   │────▸│  Conversion   │────▸│  Terminal    │
+│  (file/URL)  │     │  Decoder  │     │  ASCII+ANSI   │     │  Renderer   │
 └──────────────┘     └──────────┘     └──────────────┘     └──────────────┘
        │                                      │
        ▼                                      ▼
-  yt-dlp (если              Яркость → символ из " .:-=+*#%@"
+  yt-dlp (if                Brightness → char from " .:-=+*#%@"
   YouTube URL)              RGB → ANSI True Color \033[38;2;R;G;Bm
 ```
 
-1. **Источник** — если передана YouTube-ссылка, `yt-dlp` извлекает прямой URL потока (≤720p)
-2. **Декодирование** — `cv2.VideoCapture` читает кадры из файла или потока
-3. **Масштабирование** — кадр уменьшается до ширины терминала; высота рассчитывается с коэффициентом `0.55` для компенсации пропорций символа
-4. **ASCII-конвертация** — яркость пикселя (BT.601) определяет символ, RGB кодируется через True Color ANSI
-5. **Рендеринг** — кадр выводится одной операцией `sys.stdout.write`; каретка возвращается через `\033[H` — без мерцания
-6. **FPS** — `time.perf_counter` + `time.sleep` синхронизируют скорость воспроизведения
+1. **Source** — if a YouTube link is provided, `yt-dlp` extracts the direct stream URL (≤720p)
+2. **Decoding** — `cv2.VideoCapture` reads frames from the file or stream
+3. **Scaling** — each frame is resized to terminal width; height is calculated with a `0.55` coefficient to compensate for character aspect ratio
+4. **ASCII conversion** — pixel brightness (BT.601) determines the character, RGB is encoded via True Color ANSI
+5. **Rendering** — frame is output in a single `sys.stdout.write` call; cursor returns to home via `\033[H` — no flickering
+6. **FPS** — `time.perf_counter` + `time.sleep` synchronize playback speed
 
 ---
 
-## 🖥️ Требования к терминалу
+## 🖥️ Terminal Requirements
 
-Для корректного отображения цветов терминал должен поддерживать **True Color (24-bit)**:
+Your terminal must support **True Color (24-bit)** for correct color display:
 
-| Терминал | Поддержка |
-|----------|-----------|
+| Terminal | Support |
+|----------|---------|
 | Windows Terminal | ✅ |
 | iTerm2 | ✅ |
 | GNOME Terminal | ✅ |
 | Alacritty | ✅ |
 | Kitty | ✅ |
-| cmd.exe (Windows) | ⚠️ Ограниченная |
+| cmd.exe (Windows) | ⚠️ Limited |
 
 ---
 
-## 📄 Лицензия
+## 📄 License
 
-Проект распространяется под лицензией [MIT](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
 
 ---
 
 <p align="center">
-  Сделано с ❤️ и ANSI escape-кодами
+  Made with ❤️ and ANSI escape codes
 </p>
