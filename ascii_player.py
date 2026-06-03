@@ -353,13 +353,25 @@ def get_video_properties_ffprobe(source: str) -> tuple[float, int, int, int]:
 
 # ─── Audio Playback ──────────────────────────────────────────────────────────
 
-def _ffplay_cmd(source: str, volume: int, ss: float = 0) -> list:
+def _ffplay_cmd(source: str, volume: int, ss: float = 0, speed: float = 1.0) -> list:
     cmd = [
         "ffplay", "-nodisp", "-autoexit", "-volume", str(volume),
         "-fflags", "nobuffer", "-flags", "low_delay",
     ]
     if is_url(source):
         cmd += ["-probesize", "32", "-analyzeduration", "0"]
+    if speed != 1.0:
+        tempo_filters = []
+        rem = speed
+        while rem > 2.0:
+            tempo_filters.append("atempo=2.0")
+            rem /= 2.0
+        while rem < 0.5:
+            tempo_filters.append("atempo=0.5")
+            rem /= 0.5
+        if rem != 1.0:
+            tempo_filters.append(f"atempo={rem:.2f}")
+        cmd += ["-af", ",".join(tempo_filters)]
     if ss > 0:
         cmd += ["-ss", f"{ss:.1f}"]
     cmd.append(source)
@@ -388,10 +400,11 @@ def extract_audio(source: str) -> str | None:
 class AudioController:
     """Controls background audio playback with seek / mute / volume."""
 
-    def __init__(self, source: str, volume: int = 100, use_ffplay: bool = False):
+    def __init__(self, source: str, volume: int = 100, use_ffplay: bool = False, speed: float = 1.0):
         self.source = source
         self.use_ffplay = use_ffplay or is_url(source)
         self.volume = volume
+        self.speed = speed
         self.temp_wav: str | None = None
         self.ffplay_proc: subprocess.Popen | None = None
         self.muted = False
@@ -401,15 +414,15 @@ class AudioController:
     # ── public API ────────────────────────────────────────────────────────
 
     def start(self, position: float = 0.0) -> bool:
-        if self.muted:
-            return False
         self._stop_playback()
+
+        start_vol = 0 if self.muted else self.volume
 
         # Prefer ffplay (streams directly, supports seeking)
         if shutil.which("ffplay"):
             try:
                 self.ffplay_proc = subprocess.Popen(
-                    _ffplay_cmd(self.source, self.volume, position),
+                    _ffplay_cmd(self.source, start_vol, position, self.speed),
                     stdin=subprocess.PIPE,
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
@@ -421,6 +434,9 @@ class AudioController:
 
         # Windows winsound fallback (only for local files, no seeking)
         if sys.platform == "win32" and shutil.which("ffmpeg") and position == 0:
+            if self.muted:
+                self._active = True
+                return True
             self.temp_wav = extract_audio(self.source)
             if self.temp_wav:
                 try:
@@ -435,8 +451,6 @@ class AudioController:
         return False
 
     def seek(self, position: float) -> None:
-        if self.muted:
-            return
         self.start(position=position)
 
     def pause(self) -> None:
@@ -482,8 +496,35 @@ class AudioController:
     def toggle_mute(self) -> bool:
         self.muted = not self.muted
         if self.muted:
-            self._stop_playback()
-            self._active = False
+            if self.ffplay_proc and self.ffplay_proc.stdin:
+                try:
+                    self.ffplay_proc.stdin.write(b"9" * 10)
+                    self.ffplay_proc.stdin.flush()
+                except Exception:
+                    pass
+            elif self.temp_wav and sys.platform == "win32":
+                try:
+                    import winsound
+                    winsound.PlaySound(None, winsound.SND_PURGE)
+                except Exception:
+                    pass
+        else:
+            if self.ffplay_proc and self.ffplay_proc.stdin:
+                try:
+                    self.ffplay_proc.stdin.write(b"9" * 10)
+                    steps = self.volume // 10
+                    self.ffplay_proc.stdin.write(b"0" * steps)
+                    self.ffplay_proc.stdin.flush()
+                except Exception:
+                    pass
+            elif self.temp_wav and sys.platform == "win32":
+                try:
+                    import winsound
+                    winsound.PlaySound(
+                        self.temp_wav, winsound.SND_FILENAME | winsound.SND_ASYNC
+                    )
+                except Exception:
+                    pass
         return self.muted
 
     def volume_down(self) -> int:
@@ -818,7 +859,7 @@ def frame_to_ansi_fast(
                 prev = c
             else:
                 parts.append(ch)
-        buf.append("".join(parts) + ERASE_LINE)
+        buf.append("".join(parts) + RESET_COLOR + ERASE_LINE)
     return RESET_COLOR + "\n".join(buf) + RESET_COLOR
 
 
@@ -864,7 +905,7 @@ def frame_to_halfblock(
                 seq += f"\033[48;2;{br};{bg_};{bb}m"
                 pbg = cbg
             parts.append(f"{seq}{HALF_BLOCK}")
-        buf.append("".join(parts) + ERASE_LINE)
+        buf.append("".join(parts) + RESET_COLOR + ERASE_LINE)
     return RESET_COLOR + "\n".join(buf) + RESET_COLOR
 
 
@@ -1343,7 +1384,7 @@ def play_video(
     audio: AudioController | None = None
     audio_started = False
     if play_audio and not is_webcam:
-        audio = AudioController(source, use_ffplay=use_ffplay)
+        audio = AudioController(source, use_ffplay=use_ffplay, speed=1.0)
         audio_started = audio.start()
         if audio_started and not is_url(str(source)):
             # Local file: ffplay takes about 100-150ms to start audio output.
@@ -1411,8 +1452,6 @@ def play_video(
                 elif key == "mute":
                     if audio:
                         muted = audio.toggle_mute()
-                        if not muted and not paused:
-                            audio.seek(video_time)
                 elif key == "volume_down":
                     if audio:
                         audio.volume_down()
@@ -1425,8 +1464,16 @@ def play_video(
                     rp.clear()
                 elif key == "speed_down":
                     speed = max(0.25, round(speed - 0.25, 2))
+                    if audio:
+                        audio.speed = speed
+                        if audio_started and not muted and not paused:
+                            audio.seek(video_time)
                 elif key == "speed_up":
                     speed = min(4.0, round(speed + 0.25, 2))
+                    if audio:
+                        audio.speed = speed
+                        if audio_started and not muted and not paused:
+                            audio.seek(video_time)
                 elif key == "left" and not is_webcam:
                     new_t = max(0, video_time - seek_step)
                     new_frame = int(new_t * fps)
