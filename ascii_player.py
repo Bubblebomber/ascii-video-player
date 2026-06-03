@@ -83,9 +83,18 @@ CLEAR_SCREEN = "\033[2J"
 ERASE_LINE  = "\033[K"
 
 
+TEMP_FILES = set()
+
+
 def restore_cursor() -> None:
     sys.stdout.write(SHOW_CURSOR + RESET_COLOR)
     sys.stdout.flush()
+    for path in list(TEMP_FILES):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
 
 
 atexit.register(restore_cursor)
@@ -365,6 +374,7 @@ def extract_audio(source: str) -> str | None:
     ]
     try:
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        TEMP_FILES.add(tmp)
         return tmp
     except Exception:
         if os.path.exists(tmp):
@@ -640,6 +650,11 @@ class FrameBuffer:
     def stop_thread(self) -> None:
         self._stop.set()
         self._paused.set()          # unblock if waiting
+        if self._thread.is_alive():
+            try:
+                self._thread.join(timeout=1.0)
+            except Exception:
+                pass
 
     @property
     def is_finished(self) -> bool:
@@ -888,6 +903,11 @@ class RenderPipeline:
 
     def stop(self) -> None:
         self._stop.set()
+        if self._thread.is_alive():
+            try:
+                self._thread.join(timeout=1.0)
+            except Exception:
+                pass
 
     def clear(self) -> None:
         with self.lock:
@@ -985,6 +1005,11 @@ class KeyboardController:
         if self._old_settings is not None and termios:
             try:
                 termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self._old_settings)
+            except Exception:
+                pass
+        if self._thread and self._thread.is_alive():
+            try:
+                self._thread.join(timeout=1.0)
             except Exception:
                 pass
 
